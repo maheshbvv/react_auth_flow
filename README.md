@@ -19,7 +19,7 @@ It ports the feature set of the Flutter `flutter_auth_flow` package into a React
 ## Installation
 
 ```bash
-npm install react-auth-flow
+npm i @maheshbvv/react-auth-flow
 ```
 
 Import the shipped styles once in your app:
