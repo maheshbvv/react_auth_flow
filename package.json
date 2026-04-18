@@ -1,5 +1,5 @@
 {
-  "name": "react-auth-flow",
+  "name": "@maheshbvv/react-auth-flow",
   "version": "0.1.0",
   "description": "Drop-in React authentication flow with sign in, sign up, forgot password, theming, transitions, and render prop customization.",
   "type": "module",
@@ -47,12 +47,12 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.1",
+    "@vitejs/plugin-react": "^4.7.0",
     "jsdom": "^29.0.2",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "typescript": "^6.0.2",
-    "vite": "^8.0.7",
+    "vite": "^5.4.21",
     "vitest": "^4.1.3"
   }
 }

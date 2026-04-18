@@ -11,9 +11,10 @@ It ports the feature set of the Flutter `flutter_auth_flow` package into a React
 - Success callbacks for each mode
 - Internal loading and error state, with external override support
 - Built-in validation
+- Optional sign-up password strength meter and HIBP breach check
 - Animated mode transitions
 - Theme tokens for colors, typography, radii, and motion
-- Render-prop customization for header, footer, error, loading, submit button, and mode switcher
+- Flutter-style builder aliases plus React render-prop customization for header, footer, error, loading, submit button, and mode switcher
 - Demo auth service and React provider for local demos/tests
 
 ## Installation
@@ -89,12 +90,41 @@ import { AuthFlow, AuthFlowType } from 'react-auth-flow';
 | `errorMessage` | `string \| null` | Overrides internal error messaging. |
 | `initialMode` | `AuthMode` | Starting mode if enabled. |
 | `theme` | `AuthFlowTheme` | Visual customization. |
+| `passwordPolicy` | `PasswordPolicy` | Optional sign-up password meter and breach policy. |
+| `headerBuilder` | `(props) => ReactNode` | Flutter-style alias for `headerRenderer`. |
+| `footerBuilder` | `(props) => ReactNode` | Flutter-style alias for `footerRenderer`. |
+| `errorBuilder` | `(props) => ReactNode` | Flutter-style alias for `errorRenderer`. |
+| `loadingBuilder` | `(props) => ReactNode` | Flutter-style alias for `loadingRenderer`. |
+| `submitButtonBuilder` | `(props) => ReactNode` | Flutter-style alias for `submitButtonRenderer`. |
+| `modeSwitcherBuilder` | `(props) => ReactNode` | Flutter-style alias for `modeSwitcherRenderer`. |
 | `headerRenderer` | `(props) => ReactNode` | Replaces the default header. |
 | `footerRenderer` | `(props) => ReactNode` | Renders below the form. |
 | `errorRenderer` | `(props) => ReactNode` | Replaces the default error UI. |
 | `loadingRenderer` | `(props) => ReactNode` | Replaces the spinner inside the default submit button. |
 | `submitButtonRenderer` | `(props) => ReactNode` | Replaces the default submit button. |
 | `modeSwitcherRenderer` | `(props) => ReactNode` | Replaces the bottom mode switcher. |
+
+## Password policy
+
+```tsx
+import { AuthFlow } from 'react-auth-flow';
+
+<AuthFlow
+  authFlowType={AuthFlowType.signInAndSignUp()}
+  onSignIn={handleSignIn}
+  onSignUp={handleSignUp}
+  passwordPolicy={{
+    showStrengthIndicator: true,
+    minLength: 10,
+    enablePwnedCheck: true,
+    blockPwnedPasswords: true,
+  }}
+/>;
+```
+
+If the breach lookup fails, sign-up is still allowed and the component shows a warning instead of blocking the user.
+
+The package also exports `evaluatePasswordStrength`, `checkPasswordAgainstPwnedPasswords`, `safePasswordBreachCheckResult`, and `pwnedPasswordBreachCheckResult`.
 
 ## Theming
 

@@ -2,12 +2,37 @@ import type { CSSProperties, ReactNode } from 'react';
 
 export type AuthMode = 'signIn' | 'signUp' | 'forgotPassword';
 export type ThemeMode = 'system' | 'light' | 'dark';
+export type PasswordStrength = 'weak' | 'fair' | 'good' | 'strong';
 
 export const AUTH_MODE_ORDER: readonly AuthMode[] = [
   'signIn',
   'signUp',
   'forgotPassword',
 ];
+
+export interface PasswordStrengthResult {
+  level: PasswordStrength;
+  progress: number;
+  label: string;
+  helperText: string;
+}
+
+export interface PasswordBreachCheckResult {
+  isPwned: boolean;
+  exposureCount: number;
+}
+
+export type PasswordBreachChecker = (
+  password: string,
+) => Promise<PasswordBreachCheckResult>;
+
+export interface PasswordPolicy {
+  showStrengthIndicator?: boolean;
+  minLength?: number;
+  enablePwnedCheck?: boolean;
+  blockPwnedPasswords?: boolean;
+  breachChecker?: PasswordBreachChecker;
+}
 
 export class AuthFlowType {
   readonly enabledModes: ReadonlySet<AuthMode>;
@@ -132,7 +157,14 @@ export interface AuthFlowProps {
   errorMessage?: string | null;
   initialMode?: AuthMode;
   theme?: AuthFlowTheme;
+  passwordPolicy?: PasswordPolicy;
   className?: string;
+  headerBuilder?: (props: HeaderRenderProps) => ReactNode;
+  footerBuilder?: (props: FooterRenderProps) => ReactNode;
+  errorBuilder?: (props: ErrorRenderProps) => ReactNode;
+  loadingBuilder?: (props: AuthFlowRenderContext) => ReactNode;
+  submitButtonBuilder?: (props: SubmitButtonRenderProps) => ReactNode;
+  modeSwitcherBuilder?: (props: ModeSwitcherRenderProps) => ReactNode;
   headerRenderer?: (props: HeaderRenderProps) => ReactNode;
   footerRenderer?: (props: FooterRenderProps) => ReactNode;
   errorRenderer?: (props: ErrorRenderProps) => ReactNode;

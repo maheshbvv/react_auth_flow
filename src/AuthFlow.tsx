@@ -7,12 +7,18 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react';
+import {
+  checkPasswordAgainstPwnedPasswords,
+  evaluatePasswordStrength,
+} from './passwordPolicy';
 import type {
   AuthFlowProps,
   AuthFlowRenderContext,
   AuthFlowTheme,
   AuthMode,
   ModeSwitcherRenderProps,
+  PasswordBreachCheckResult,
+  PasswordStrength,
 } from './types';
 import { AuthFlowType } from './types';
 import './styles.css';
@@ -103,40 +109,6 @@ function validateEmail(email: string): boolean {
   return /^[^@]+@[^@]+\.[^@]+$/u.test(email.trim());
 }
 
-function validateFields(mode: AuthMode, fields: FormFields): FieldErrors {
-  const errors: FieldErrors = {};
-
-  if (mode === 'signUp') {
-    if (!fields.name.trim()) {
-      errors.name = 'Name is required';
-    }
-  }
-
-  if (!fields.email.trim()) {
-    errors.email = 'Email is required';
-  } else if (!validateEmail(fields.email)) {
-    errors.email = 'Enter a valid email';
-  }
-
-  if (mode !== 'forgotPassword') {
-    if (!fields.password) {
-      errors.password = 'Password is required';
-    } else if (mode === 'signUp' && fields.password.length < 8) {
-      errors.password = 'Minimum 8 characters';
-    }
-  }
-
-  if (mode === 'signUp') {
-    if (!fields.confirmPassword) {
-      errors.confirmPassword = 'Please confirm password';
-    } else if (fields.confirmPassword !== fields.password) {
-      errors.confirmPassword = 'Passwords do not match';
-    }
-  }
-
-  return errors;
-}
-
 function getForgotPasswordLink(mode: AuthMode, authFlowType: AuthFlowType) {
   return (
     mode === 'signIn' &&
@@ -156,22 +128,12 @@ function getModeSwitcherLinks(
   }
 
   if (mode === 'signUp' && authFlowType.hasMode('signIn')) {
-    return [
-      {
-        prompt: 'Already have an account?',
-        label: 'Sign in',
-        mode: 'signIn',
-      },
-    ];
+    return [{ prompt: 'Already have an account?', label: 'Sign in', mode: 'signIn' }];
   }
 
   if (mode === 'forgotPassword' && authFlowType.hasMode('signIn')) {
     return [
-      {
-        prompt: 'Remember your password?',
-        label: 'Sign in',
-        mode: 'signIn',
-      },
+      { prompt: 'Remember your password?', label: 'Sign in', mode: 'signIn' },
     ];
   }
 
@@ -230,6 +192,73 @@ function defaultFieldProps(theme?: AuthFlowTheme) {
   };
 }
 
+function getPasswordStrengthTone(level: PasswordStrength) {
+  switch (level) {
+    case 'strong':
+      return '#15803d';
+    case 'good':
+      return '#65a30d';
+    case 'fair':
+      return '#d97706';
+    case 'weak':
+      return '#dc2626';
+  }
+}
+
+function validateFields(input: {
+  mode: AuthMode;
+  fields: FormFields;
+  minimumPasswordLength: number;
+  lastCheckedPassword: string | null;
+  pwnedResult: PasswordBreachCheckResult | null;
+  blocksPwnedPasswords: boolean;
+}): FieldErrors {
+  const {
+    mode,
+    fields,
+    minimumPasswordLength,
+    lastCheckedPassword,
+    pwnedResult,
+    blocksPwnedPasswords,
+  } = input;
+  const errors: FieldErrors = {};
+
+  if (mode === 'signUp' && !fields.name.trim()) {
+    errors.name = 'Name is required';
+  }
+
+  if (!fields.email.trim()) {
+    errors.email = 'Email is required';
+  } else if (!validateEmail(fields.email)) {
+    errors.email = 'Enter a valid email';
+  }
+
+  if (mode !== 'forgotPassword') {
+    if (!fields.password) {
+      errors.password = 'Password is required';
+    } else if (mode === 'signUp' && fields.password.length < minimumPasswordLength) {
+      errors.password = `Minimum ${minimumPasswordLength} characters`;
+    } else if (
+      mode === 'signUp' &&
+      blocksPwnedPasswords &&
+      pwnedResult?.isPwned &&
+      lastCheckedPassword === fields.password
+    ) {
+      errors.password = 'This password has appeared in data breaches';
+    }
+  }
+
+  if (mode === 'signUp') {
+    if (!fields.confirmPassword) {
+      errors.confirmPassword = 'Please confirm password';
+    } else if (fields.confirmPassword !== fields.password) {
+      errors.confirmPassword = 'Passwords do not match';
+    }
+  }
+
+  return errors;
+}
+
 function DefaultSpinner() {
   return <span className="raf__spinner" aria-hidden="true" />;
 }
@@ -241,9 +270,10 @@ function AuthField(props: {
   type?: string;
   autoComplete?: string;
   onChange: (value: string) => void;
-  onBlur: () => void;
+  onBlur?: () => void;
   error?: string;
   theme?: AuthFlowTheme;
+  suffix?: ReactNode;
 }) {
   const {
     name,
@@ -255,29 +285,122 @@ function AuthField(props: {
     onBlur,
     error,
     theme,
+    suffix,
   } = props;
 
   return (
     <label className="raf__field">
       <span className="raf__field-label">{label}</span>
-      <input
-        className="raf__input"
-        name={name}
-        type={type}
-        value={value}
-        autoComplete={autoComplete}
-        aria-invalid={Boolean(error)}
-        aria-describedby={error ? `${name}-error` : undefined}
-        onChange={(event) => onChange(event.target.value)}
-        onBlur={onBlur}
-        style={defaultFieldProps(theme)}
-      />
+      <span className="raf__input-shell">
+        <input
+          className="raf__input"
+          name={name}
+          type={type}
+          value={value}
+          autoComplete={autoComplete}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? `${name}-error` : undefined}
+          onChange={(event) => onChange(event.target.value)}
+          onBlur={onBlur}
+          style={defaultFieldProps(theme)}
+        />
+        {suffix}
+      </span>
       {error ? (
         <span id={`${name}-error`} className="raf__field-error">
           {error}
         </span>
       ) : null}
     </label>
+  );
+}
+
+function PasswordToggle(props: { shown: boolean; onClick: () => void }) {
+  const { shown, onClick } = props;
+
+  return (
+    <button
+      type="button"
+      className="raf__visibility-toggle"
+      onClick={onClick}
+      aria-label={shown ? 'Hide password' : 'Show password'}
+    >
+      {shown ? 'Hide' : 'Show'}
+    </button>
+  );
+}
+
+function PasswordFeedbackPanel(props: {
+  strengthLabel?: string;
+  strengthHelperText?: string;
+  strengthProgress?: number;
+  strengthLevel?: PasswordStrength;
+  showStrengthIndicator: boolean;
+  isCheckingPwnedPassword: boolean;
+  pwnedResult: PasswordBreachCheckResult | null;
+  pwnedWarning: string | null;
+}) {
+  const {
+    strengthLabel,
+    strengthHelperText,
+    strengthProgress,
+    strengthLevel,
+    showStrengthIndicator,
+    isCheckingPwnedPassword,
+    pwnedResult,
+    pwnedWarning,
+  } = props;
+
+  const strengthTone = strengthLevel ? getPasswordStrengthTone(strengthLevel) : null;
+
+  return (
+    <div className="raf__password-feedback" aria-live="polite">
+      {showStrengthIndicator && strengthLabel && strengthHelperText ? (
+        <div className="raf__feedback-block">
+          <div className="raf__feedback-row">
+            <span className="raf__feedback-label">Strength</span>
+            <strong style={{ color: strengthTone ?? undefined }}>{strengthLabel}</strong>
+          </div>
+          <div
+            className="raf__strength-meter"
+            aria-label="Password strength"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round((strengthProgress ?? 0) * 100)}
+          >
+            <span
+              className="raf__strength-meter-fill"
+              style={{
+                width: `${Math.round((strengthProgress ?? 0) * 100)}%`,
+                background: strengthTone ?? 'var(--raf-primary)',
+              }}
+            />
+          </div>
+          <p className="raf__feedback-helper">{strengthHelperText}</p>
+        </div>
+      ) : null}
+
+      {isCheckingPwnedPassword ? (
+        <p className="raf__feedback-helper">Checking breach exposure...</p>
+      ) : null}
+
+      {pwnedResult?.isPwned ? (
+        <p className="raf__feedback-helper raf__feedback-helper--error">
+          This password has appeared in data breaches
+          {pwnedResult.exposureCount > 0
+            ? ` (${pwnedResult.exposureCount.toLocaleString()} times)`
+            : ''}
+          .
+        </p>
+      ) : null}
+
+      {pwnedWarning ? (
+        <p className="raf__feedback-helper raf__feedback-helper--warning">
+          {pwnedWarning}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -326,7 +449,14 @@ export function AuthFlow(props: AuthFlowProps) {
     errorMessage,
     initialMode,
     theme,
+    passwordPolicy,
     className,
+    headerBuilder,
+    footerBuilder,
+    errorBuilder,
+    loadingBuilder,
+    submitButtonBuilder,
+    modeSwitcherBuilder,
     headerRenderer,
     footerRenderer,
     errorRenderer,
@@ -334,6 +464,15 @@ export function AuthFlow(props: AuthFlowProps) {
     submitButtonRenderer,
     modeSwitcherRenderer,
   } = props;
+
+  const resolvedHeaderRenderer = headerBuilder ?? headerRenderer;
+  const resolvedFooterRenderer = footerBuilder ?? footerRenderer;
+  const resolvedErrorRenderer = errorBuilder ?? errorRenderer;
+  const resolvedLoadingRenderer = loadingBuilder ?? loadingRenderer;
+  const resolvedSubmitButtonRenderer =
+    submitButtonBuilder ?? submitButtonRenderer;
+  const resolvedModeSwitcherRenderer =
+    modeSwitcherBuilder ?? modeSwitcherRenderer;
 
   const [mode, setMode] = useState<AuthMode>(() =>
     resolveInitialMode(authFlowType, initialMode),
@@ -343,13 +482,67 @@ export function AuthFlow(props: AuthFlowProps) {
   const [submitted, setSubmitted] = useState(false);
   const [internalLoading, setInternalLoading] = useState(false);
   const [internalError, setInternalError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isCheckingPwnedPassword, setIsCheckingPwnedPassword] = useState(false);
+  const [lastCheckedPassword, setLastCheckedPassword] = useState<string | null>(null);
+  const [pwnedWarning, setPwnedWarning] = useState<string | null>(null);
+  const [pwnedResult, setPwnedResult] = useState<PasswordBreachCheckResult | null>(
+    null,
+  );
 
   const resolvedThemeMode = useResolvedThemeMode(theme?.themeMode);
   const effectiveLoading = isLoading ?? internalLoading;
   const effectiveError = errorMessage ?? internalError;
-  const fieldErrors = useMemo(() => validateFields(mode, fields), [mode, fields]);
+  const minimumPasswordLength = passwordPolicy?.minLength ?? 8;
+  const showStrengthIndicator = passwordPolicy?.showStrengthIndicator ?? false;
+  const checksPwnedPasswords = passwordPolicy?.enablePwnedCheck ?? false;
+  const blocksPwnedPasswords = passwordPolicy?.blockPwnedPasswords ?? true;
+  const passwordStrength = useMemo(
+    () =>
+      evaluatePasswordStrength({
+        password: fields.password,
+        email: fields.email.trim(),
+        name: fields.name.trim(),
+        minLength: minimumPasswordLength,
+      }),
+    [fields.email, fields.name, fields.password, minimumPasswordLength],
+  );
+  const fieldErrors = useMemo(
+    () =>
+      validateFields({
+        mode,
+        fields,
+        minimumPasswordLength,
+        lastCheckedPassword,
+        pwnedResult,
+        blocksPwnedPasswords,
+      }),
+    [
+      blocksPwnedPasswords,
+      fields,
+      lastCheckedPassword,
+      minimumPasswordLength,
+      mode,
+      pwnedResult,
+    ],
+  );
   const forgotPasswordLink = getForgotPasswordLink(mode, authFlowType);
   const modeLinks = getModeSwitcherLinks(mode, authFlowType);
+  const showsPasswordFeedback =
+    mode === 'signUp' &&
+    fields.password.length > 0 &&
+    (showStrengthIndicator ||
+      checksPwnedPasswords ||
+      Boolean(pwnedWarning) ||
+      Boolean(pwnedResult));
+
+  const clearPwnedState = useCallback(() => {
+    setIsCheckingPwnedPassword(false);
+    setLastCheckedPassword(null);
+    setPwnedWarning(null);
+    setPwnedResult(null);
+  }, []);
 
   useEffect(() => {
     if (!authFlowType.hasMode(mode)) {
@@ -358,8 +551,23 @@ export function AuthFlow(props: AuthFlowProps) {
       setTouched({});
       setSubmitted(false);
       setInternalError(null);
+      setShowPassword(false);
+      setShowConfirmPassword(false);
+      clearPwnedState();
     }
-  }, [authFlowType, initialMode, mode]);
+  }, [authFlowType, clearPwnedState, initialMode, mode]);
+
+  useEffect(() => {
+    if (!checksPwnedPasswords && (lastCheckedPassword || pwnedResult || pwnedWarning)) {
+      clearPwnedState();
+    }
+  }, [
+    checksPwnedPasswords,
+    clearPwnedState,
+    lastCheckedPassword,
+    pwnedResult,
+    pwnedWarning,
+  ]);
 
   const switchMode = useCallback(
     (nextMode: AuthMode) => {
@@ -372,8 +580,11 @@ export function AuthFlow(props: AuthFlowProps) {
       setTouched({});
       setSubmitted(false);
       setInternalError(null);
+      setShowPassword(false);
+      setShowConfirmPassword(false);
+      clearPwnedState();
     },
-    [authFlowType],
+    [authFlowType, clearPwnedState],
   );
 
   const renderContext: AuthFlowRenderContext = useMemo(
@@ -388,12 +599,19 @@ export function AuthFlow(props: AuthFlowProps) {
     [authFlowType, effectiveError, effectiveLoading, mode, switchMode, theme],
   );
 
-  const setField = useCallback((name: FieldName, value: string) => {
-    setFields((current) => ({
-      ...current,
-      [name]: value,
-    }));
-  }, []);
+  const setField = useCallback(
+    (name: FieldName, value: string) => {
+      setFields((current) => ({ ...current, [name]: value }));
+
+      if (name === 'password' && lastCheckedPassword !== value) {
+        setIsCheckingPwnedPassword(false);
+        setLastCheckedPassword(null);
+        setPwnedWarning(null);
+        setPwnedResult(null);
+      }
+    },
+    [lastCheckedPassword],
+  );
 
   const showFieldError = useCallback(
     (name: FieldName) => {
@@ -409,6 +627,68 @@ export function AuthFlow(props: AuthFlowProps) {
   const markTouched = useCallback((name: FieldName) => {
     setTouched((current) => ({ ...current, [name]: true }));
   }, []);
+
+  const checkPwnedPasswordIfNeeded = useCallback(async () => {
+    if (mode !== 'signUp' || !checksPwnedPasswords || isCheckingPwnedPassword) {
+      return;
+    }
+
+    const password = fields.password;
+    if (!password || password.length < minimumPasswordLength) {
+      if (lastCheckedPassword || pwnedResult || pwnedWarning) {
+        clearPwnedState();
+      }
+      return;
+    }
+
+    if (lastCheckedPassword === password) {
+      return;
+    }
+
+    setIsCheckingPwnedPassword(true);
+    setPwnedWarning(null);
+
+    try {
+      const checker = passwordPolicy?.breachChecker ?? checkPasswordAgainstPwnedPasswords;
+      const result = await checker(password);
+
+      setLastCheckedPassword((current) => {
+        if (fields.password !== password) {
+          return current;
+        }
+
+        return password;
+      });
+
+      if (fields.password === password) {
+        setPwnedResult(result);
+        setPwnedWarning(null);
+      }
+    } catch {
+      if (fields.password === password) {
+        setLastCheckedPassword(password);
+        setPwnedResult(null);
+        setPwnedWarning(
+          "Couldn't verify breach exposure right now. You can still continue.",
+        );
+      }
+    } finally {
+      if (fields.password === password) {
+        setIsCheckingPwnedPassword(false);
+      }
+    }
+  }, [
+    checksPwnedPasswords,
+    clearPwnedState,
+    fields.password,
+    isCheckingPwnedPassword,
+    lastCheckedPassword,
+    minimumPasswordLength,
+    mode,
+    passwordPolicy?.breachChecker,
+    pwnedResult,
+    pwnedWarning,
+  ]);
 
   const requireHandler = useCallback(
     (currentMode: AuthMode) => {
@@ -452,9 +732,34 @@ export function AuthFlow(props: AuthFlowProps) {
   const submit = useCallback(async () => {
     setSubmitted(true);
 
-    const errors = validateFields(mode, fields);
+    const errors = validateFields({
+      mode,
+      fields,
+      minimumPasswordLength,
+      lastCheckedPassword,
+      pwnedResult,
+      blocksPwnedPasswords,
+    });
+
     if (Object.keys(errors).length > 0 || effectiveLoading) {
       return;
+    }
+
+    if (mode === 'signUp') {
+      await checkPwnedPasswordIfNeeded();
+
+      const signUpErrors = validateFields({
+        mode,
+        fields,
+        minimumPasswordLength,
+        lastCheckedPassword: fields.password,
+        pwnedResult,
+        blocksPwnedPasswords,
+      });
+
+      if (Object.keys(signUpErrors).length > 0) {
+        return;
+      }
     }
 
     setInternalError(null);
@@ -468,7 +773,18 @@ export function AuthFlow(props: AuthFlowProps) {
     } finally {
       setInternalLoading(false);
     }
-  }, [effectiveLoading, fields, mode, requireHandler, runSuccessCallback]);
+  }, [
+    blocksPwnedPasswords,
+    checkPwnedPasswordIfNeeded,
+    effectiveLoading,
+    fields,
+    lastCheckedPassword,
+    minimumPasswordLength,
+    mode,
+    pwnedResult,
+    requireHandler,
+    runSuccessCallback,
+  ]);
 
   const handleSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
@@ -495,21 +811,15 @@ export function AuthFlow(props: AuthFlowProps) {
   } as CSSProperties;
 
   const currentContent = MODE_CONTENT[mode];
-  const loadingIndicator: ReactNode = loadingRenderer
-    ? loadingRenderer(renderContext)
+  const loadingIndicator: ReactNode = resolvedLoadingRenderer
+    ? resolvedLoadingRenderer(renderContext)
     : <DefaultSpinner />;
 
   return (
-    <div
-      className={modeClassName(
-        `raf raf--${resolvedThemeMode}`,
-        className,
-      )}
-      style={themeStyles}
-    >
+    <div className={modeClassName(`raf raf--${resolvedThemeMode}`, className)} style={themeStyles}>
       <div className="raf__card" style={theme?.cardStyle}>
-        {headerRenderer ? (
-          headerRenderer(renderContext)
+        {resolvedHeaderRenderer ? (
+          resolvedHeaderRenderer(renderContext)
         ) : (
           <header className="raf__header">
             <h2 className="raf__title" style={theme?.titleStyle}>
@@ -523,8 +833,8 @@ export function AuthFlow(props: AuthFlowProps) {
 
         {effectiveError ? (
           <div className="raf__error-shell" aria-live="polite">
-            {errorRenderer ? (
-              errorRenderer({ ...renderContext, error: effectiveError })
+            {resolvedErrorRenderer ? (
+              resolvedErrorRenderer({ ...renderContext, error: effectiveError })
             ) : (
               <div className="raf__error">
                 <strong className="raf__error-icon" aria-hidden="true">
@@ -567,13 +877,35 @@ export function AuthFlow(props: AuthFlowProps) {
               <AuthField
                 name="password"
                 label="Password"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 value={fields.password}
                 autoComplete={mode === 'signUp' ? 'new-password' : 'current-password'}
                 onChange={(value) => setField('password', value)}
-                onBlur={() => markTouched('password')}
+                onBlur={() => {
+                  markTouched('password');
+                  void checkPwnedPasswordIfNeeded();
+                }}
                 error={showFieldError('password')}
                 theme={theme}
+                suffix={
+                  <PasswordToggle
+                    shown={showPassword}
+                    onClick={() => setShowPassword((current) => !current)}
+                  />
+                }
+              />
+            ) : null}
+
+            {showsPasswordFeedback ? (
+              <PasswordFeedbackPanel
+                strengthLabel={passwordStrength.label}
+                strengthHelperText={passwordStrength.helperText}
+                strengthProgress={passwordStrength.progress}
+                strengthLevel={passwordStrength.level}
+                showStrengthIndicator={showStrengthIndicator}
+                isCheckingPwnedPassword={isCheckingPwnedPassword}
+                pwnedResult={pwnedResult}
+                pwnedWarning={pwnedWarning}
               />
             ) : null}
 
@@ -581,13 +913,19 @@ export function AuthFlow(props: AuthFlowProps) {
               <AuthField
                 name="confirmPassword"
                 label="Confirm password"
-                type="password"
+                type={showConfirmPassword ? 'text' : 'password'}
                 value={fields.confirmPassword}
                 autoComplete="new-password"
                 onChange={(value) => setField('confirmPassword', value)}
                 onBlur={() => markTouched('confirmPassword')}
                 error={showFieldError('confirmPassword')}
                 theme={theme}
+                suffix={
+                  <PasswordToggle
+                    shown={showConfirmPassword}
+                    onClick={() => setShowConfirmPassword((current) => !current)}
+                  />
+                }
               />
             ) : null}
 
@@ -604,8 +942,8 @@ export function AuthFlow(props: AuthFlowProps) {
               </div>
             ) : null}
 
-            {submitButtonRenderer ? (
-              submitButtonRenderer({
+            {resolvedSubmitButtonRenderer ? (
+              resolvedSubmitButtonRenderer({
                 ...renderContext,
                 label: currentContent.submitLabel,
                 submit: () => {
@@ -633,8 +971,8 @@ export function AuthFlow(props: AuthFlowProps) {
             )}
 
             {modeLinks.length > 0 ? (
-              modeSwitcherRenderer ? (
-                modeSwitcherRenderer({
+              resolvedModeSwitcherRenderer ? (
+                resolvedModeSwitcherRenderer({
                   ...renderContext,
                   links: modeLinks,
                 })
@@ -649,7 +987,7 @@ export function AuthFlow(props: AuthFlowProps) {
           </form>
         </div>
 
-        {footerRenderer ? footerRenderer(renderContext) : null}
+        {resolvedFooterRenderer ? resolvedFooterRenderer(renderContext) : null}
       </div>
     </div>
   );

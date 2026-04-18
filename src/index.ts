@@ -6,6 +6,12 @@ export {
   useDemoAuthService,
   useMaybeDemoAuthService,
 } from './demoAuthService';
+export {
+  checkPasswordAgainstPwnedPasswords,
+  evaluatePasswordStrength,
+  pwnedPasswordBreachCheckResult,
+  safePasswordBreachCheckResult,
+} from './passwordPolicy';
 export { AuthFlowType } from './types';
 export type {
   AuthFlowProps,
@@ -16,6 +22,11 @@ export type {
   FooterRenderProps,
   HeaderRenderProps,
   ModeSwitcherRenderProps,
+  PasswordBreachChecker,
+  PasswordBreachCheckResult,
+  PasswordPolicy,
+  PasswordStrength,
+  PasswordStrengthResult,
   SubmitButtonRenderProps,
   ThemeMode,
 } from './types';

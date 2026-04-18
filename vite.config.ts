@@ -1,6 +1,5 @@
-import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   plugins: [react()],
@@ -11,7 +10,7 @@ export default defineConfig({
   build: {
     cssCodeSplit: false,
     lib: {
-      entry: resolve(__dirname, 'src/index.ts'),
+      entry: new URL('./src/index.ts', import.meta.url).pathname,
       name: 'ReactAuthFlow',
       formats: ['es', 'cjs'],
       fileName: (format) => (format === 'es' ? 'index.js' : 'index.cjs'),
@@ -23,6 +22,7 @@ export default defineConfig({
           react: 'React',
           'react-dom': 'ReactDOM',
         },
+        assetFileNames: 'react-auth-flow.css',
       },
     },
   },

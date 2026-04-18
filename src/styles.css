@@ -73,6 +73,11 @@
   gap: 8px;
 }
 
+.raf__input-shell {
+  display: flex;
+  position: relative;
+}
+
 .raf__field-label {
   font-size: 0.95rem;
   font-weight: 600;
@@ -87,6 +92,7 @@
   min-height: 48px;
   outline: none;
   padding: 0 14px;
+  width: 100%;
   transition:
     border-color var(--raf-transition-duration) ease,
     box-shadow var(--raf-transition-duration) ease,
@@ -105,6 +111,81 @@
 .raf__field-error {
   color: var(--raf-error);
   font-size: 0.875rem;
+}
+
+.raf__visibility-toggle {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: var(--raf-muted-text);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  inset-inline-end: 12px;
+  justify-content: center;
+  padding: 0;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.raf__password-feedback {
+  background: color-mix(in srgb, var(--raf-primary) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--raf-surface-border) 80%, transparent);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: -4px;
+  padding: 14px;
+}
+
+.raf__feedback-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.raf__feedback-row {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.raf__feedback-label {
+  color: var(--raf-muted-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.raf__strength-meter {
+  background: color-mix(in srgb, var(--raf-text) 10%, transparent);
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.raf__strength-meter-fill {
+  display: block;
+  height: 100%;
+  transition: width var(--raf-transition-duration) var(--raf-transition-timing);
+}
+
+.raf__feedback-helper {
+  color: var(--raf-muted-text);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.raf__feedback-helper--error {
+  color: var(--raf-error);
+}
+
+.raf__feedback-helper--warning {
+  color: #b45309;
 }
 
 .raf__forgot-shell {
